@@ -1,3 +1,12 @@
+# Set execution policy
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+
+# Set working directory
+Set-Location -Path "C:\Scripts\Gather_CF_Access"
+
+# Start logging
+Start-Transcript -Path "C:\Scripts\Gather_CF_Access\LogFile.txt" -Append
+
 # Function to load the .env file
 function Load-EnvFile {
     param (
@@ -146,3 +155,6 @@ if ($response -and $response.success) {
     Write-Error "Failed to fetch logs: $($response.errors)"
     Write-Output "Error details: $($response | ConvertTo-Json -Depth 10)"
 }
+
+# Stop logging
+Stop-Transcript
