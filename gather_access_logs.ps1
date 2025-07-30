@@ -1,24 +1,8 @@
 # Set execution policy
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 
-$envFilePath = ".env"
-Load-EnvFile -envFilePath $envFilePath
-
-# Retrieve the values from the environment variables
-$pwd = [System.Environment]::GetEnvironmentVariable("PWD")
-$authEmail = [System.Environment]::GetEnvironmentVariable("AUTH_EMAIL")
-$authKey = [System.Environment]::GetEnvironmentVariable("AUTH_KEY")
-$accountId = [System.Environment]::GetEnvironmentVariable("ACCOUNT_ID")
-$outputLocation = [System.Environment]::GetEnvironmentVariable("OUTPUT_LOCATION")
-
-# Set working directory
-Set-Location -Path $pwd
-
-# Start logging
-Start-Transcript -Path "${pwd}\LogFile.txt" -Append
-
-# Function to load the .env file
-function Load-EnvFile {
+# Function to get the .env file
+function Get-EnvFile {
     param (
         [string]$envFilePath
     )
@@ -29,7 +13,6 @@ function Load-EnvFile {
 AUTH_EMAIL=your_email
 AUTH_KEY=your_api_key
 ACCOUNT_ID=your_account_id
-ZONE_ID=your_zone_id
 PWD=C:\Scripts\Gather_CF_Access
 OUTPUT_LOCATION=logs
 "@ | Out-File -FilePath $envFilePath -Encoding utf8
@@ -38,7 +21,6 @@ OUTPUT_LOCATION=logs
         exit
     }
 
-    # Load the .env file
     Get-Content $envFilePath | ForEach-Object {
         if ($_ -match "^(.*?)=(.*)$") {
             [System.Environment]::SetEnvironmentVariable($matches[1], $matches[2].Trim())
@@ -47,7 +29,7 @@ OUTPUT_LOCATION=logs
 }
 
 # Function to check basic login
-function Check-Login {
+function Test-Login {
     param (
         [string]$authEmail,
         [string]$authKey
@@ -78,9 +60,7 @@ function Check-Login {
         return $false
     }
 }
-
-# Function to make the API request
-function Fetch-AccessLogs {
+function Get-AccessLogs {
     param (
         [string]$authEmail,
         [string]$authKey,
@@ -89,33 +69,24 @@ function Fetch-AccessLogs {
         [string]$endTime
     )
 
-    # Set the API endpoint for fetching access logs
-    $apiUrl = "https://api.cloudflare.com/client/v4/accounts/$accountId/access/logs/access_requests"
+    $baseUrl = "https://api.cloudflare.com/client/v4/accounts/$accountId/access/logs/access_requests"
+    $queryString = "?start=$([uri]::EscapeDataString($startTime))&end=$([uri]::EscapeDataString($endTime))"
+    $apiUrl = $baseUrl + $queryString
 
-    # Define the headers for the API request
     $headers = @{
         "X-Auth-Email" = $authEmail
         "X-Auth-Key"   = $authKey
         "Content-Type" = "application/json"
     }
 
-    # Define the parameters for the API request
-    $params = @{
-        "start" = $startTime
-        "end"   = $endTime
-    }
-
-    # Make the API request to fetch the logs
     try {
-        $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers -Body ($params | ConvertTo-Json)
+        $response = Invoke-RestMethod -Uri $apiUrl -Method Get -Headers $headers -UseBasicParsing
         return $response
     } catch {
         Write-Error "Exception occurred: $_"
         return $null
     }
 }
-
-# Function to save the logs to a file
 function Save-Logs {
     param (
         [object]$logs,
@@ -138,18 +109,39 @@ function Save-Logs {
 }
 
 # Main script
-if (-Not (Check-Login -authEmail $authEmail -authKey $authKey)) {
+$envFilePath = ".env"
+Get-EnvFile -envFilePath $envFilePath
+
+$scriptpwd = [System.Environment]::GetEnvironmentVariable("PWD")
+$authEmail = [System.Environment]::GetEnvironmentVariable("AUTH_EMAIL")
+$authKey = [System.Environment]::GetEnvironmentVariable("AUTH_KEY")
+$accountId = [System.Environment]::GetEnvironmentVariable("ACCOUNT_ID")
+$outputLocation = [System.Environment]::GetEnvironmentVariable("OUTPUT_LOCATION")
+
+Write-Output "scriptpwd: $scriptpwd"
+Write-Output "accountId: $accountId"
+
+if (-not $scriptpwd) {
+    Write-Error "PWD is not set. Please check your .env file."
     exit
 }
 
-# Define the start and end times for the logs
+Set-Location -Path $scriptpwd
+$transcriptStarted = $false
+try {
+    Start-Transcript -Path "$scriptpwd\LogFile.txt" -Append
+    $transcriptStarted = $true
+} catch {
+    Write-Error "Could not start transcript: $_"
+}
+
+if (-Not (Test-Login -authEmail $authEmail -authKey $authKey)) {
+    if ($transcriptStarted) { Stop-Transcript }
+    exit
+}
 $startTime = (Get-Date).AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ssZ")
 $endTime = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssZ")
-
-# Fetch the access logs
-$response = Fetch-AccessLogs -authEmail $authEmail -authKey $authKey -accountId $accountId -startTime $startTime -endTime $endTime
-
-# Check if the request was successful
+$response = Get-AccessLogs -authEmail $authEmail -authKey $authKey -accountId $accountId -startTime $startTime -endTime $endTime
 if ($response -and $response.success) {
     Save-Logs -logs $response.result -outputLocation $outputLocation
 } else {
@@ -157,5 +149,4 @@ if ($response -and $response.success) {
     Write-Output "Error details: $($response | ConvertTo-Json -Depth 10)"
 }
 
-# Stop logging
-Stop-Transcript
+if ($transcriptStarted) { Stop-Transcript }
