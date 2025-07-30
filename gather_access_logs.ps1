@@ -1,11 +1,21 @@
 # Set execution policy
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 
+$envFilePath = ".env"
+Load-EnvFile -envFilePath $envFilePath
+
+# Retrieve the values from the environment variables
+$pwd = [System.Environment]::GetEnvironmentVariable("PWD")
+$authEmail = [System.Environment]::GetEnvironmentVariable("AUTH_EMAIL")
+$authKey = [System.Environment]::GetEnvironmentVariable("AUTH_KEY")
+$accountId = [System.Environment]::GetEnvironmentVariable("ACCOUNT_ID")
+$outputLocation = [System.Environment]::GetEnvironmentVariable("OUTPUT_LOCATION")
+
 # Set working directory
-Set-Location -Path "C:\Scripts\Gather_CF_Access"
+Set-Location -Path $pwd
 
 # Start logging
-Start-Transcript -Path "C:\Scripts\Gather_CF_Access\LogFile.txt" -Append
+Start-Transcript -Path "${pwd}\LogFile.txt" -Append
 
 # Function to load the .env file
 function Load-EnvFile {
@@ -20,6 +30,7 @@ AUTH_EMAIL=your_email
 AUTH_KEY=your_api_key
 ACCOUNT_ID=your_account_id
 ZONE_ID=your_zone_id
+PWD=C:\Scripts\Gather_CF_Access
 OUTPUT_LOCATION=logs
 "@ | Out-File -FilePath $envFilePath -Encoding utf8
 
@@ -123,20 +134,10 @@ function Save-Logs {
 
     # Save the logs to the specified output location
     $logs | ConvertTo-Json | Out-File -FilePath $filePath
-    Write-Output "Logs have been saved to $filePath"
+    Write-Output "Json data has been saved to $filePath"
 }
 
 # Main script
-$envFilePath = ".env"
-Load-EnvFile -envFilePath $envFilePath
-
-# Retrieve the values from the environment variables
-$authEmail = [System.Environment]::GetEnvironmentVariable("AUTH_EMAIL")
-$authKey = [System.Environment]::GetEnvironmentVariable("AUTH_KEY")
-$accountId = [System.Environment]::GetEnvironmentVariable("ACCOUNT_ID")
-$outputLocation = [System.Environment]::GetEnvironmentVariable("OUTPUT_LOCATION")
-
-# Check login
 if (-Not (Check-Login -authEmail $authEmail -authKey $authKey)) {
     exit
 }
